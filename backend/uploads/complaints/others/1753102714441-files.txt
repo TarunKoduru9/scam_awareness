@@ -1,0 +1,628 @@
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  ScrollView,
+} from "react-native";
+import { useNavigation } from "@react-navigation/native";
+import { useCart } from "../../utils/CartContext";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import API from "../../utils/api";
+
+const CartScreen = () => {
+  const { cart, dispatch } = useCart();
+  const cartItems = cart.items;
+  const navigation = useNavigation();
+
+  const [userId, setUserId] = useState(null);
+  const [selectedAddress, setSelectedAddress] = useState(null);
+  const [coupon, setCoupon] = useState(null);
+  const [settings, setSettings] = useState({ delivery_charge: 0, taxes: 0 });
+  const [exploreItems, setExploreItems] = useState([]);
+
+  // Load userId once
+  useEffect(() => {
+    const getUserId = async () => {
+      const userData = await AsyncStorage.getItem("user");
+      if (userData) setUserId(JSON.parse(userData).id);
+    };
+    getUserId();
+  }, []);
+
+  // Load delivery charge and tax
+  useEffect(() => {
+    const fetchSettings = async () => {
+      try {
+        const res = await API.get("/auth/settings");
+        setSettings(res.data);
+      } catch (err) {
+        console.error("Failed to fetch settings:", err);
+      }
+    };
+    fetchSettings();
+  }, []);
+
+  // Load address and coupon from AsyncStorage on focus
+  useEffect(() => {
+    const loadCouponAndAddress = async () => {
+      try {
+        const couponData = await AsyncStorage.getItem("selectedCoupon");
+        const addressData = await AsyncStorage.getItem("selectedAddress");
+
+        if (couponData) setCoupon(JSON.parse(couponData));
+        if (addressData) setSelectedAddress(JSON.parse(addressData));
+      } catch (err) {
+        console.error("Failed to load address or coupon:", err);
+      }
+    };
+
+    const unsubscribe = navigation.addListener("focus", loadCouponAndAddress);
+    return unsubscribe;
+  }, [navigation]);
+
+  // Explore More logic
+  useEffect(() => {
+    const fetchExploreItems = async () => {
+      if (!cartItems.length || !cartItems[0].category_id) return;
+      try {
+        const res = await API.get(
+          `/auth/category/${cartItems[0].category_id}/items`
+        );
+        const filtered = res.data.filter(
+          (item) => !cartItems.some((ci) => ci.id === item.id)
+        );
+        setExploreItems(filtered.slice(0, 5));
+      } catch (err) {
+        console.error("Failed to fetch explore items", err);
+      }
+    };
+    fetchExploreItems();
+  }, [cartItems]);
+
+  // Redirect to home if cart is empty
+  useEffect(() => {
+    if (cartItems.length === 0) {
+      navigation.replace("Home");
+    }
+  }, [cartItems, navigation]);
+
+  // Calculate totals
+  const subtotal = cartItems.reduce(
+    (acc, item) => acc + (Number(item.price) || 0) * (item.quantity || 1),
+    0
+  );
+
+  const discount = coupon
+    ? coupon.discount_type === "flat"
+      ? Number(coupon.discount_value) || 0
+      : Math.min(
+          (subtotal * (Number(coupon.discount_value) || 0)) / 100,
+          Number(coupon.max_discount) || 0
+        )
+    : 0;
+
+  const deliveryCharge = Number(settings.delivery_charge) || 0;
+  const taxAmount = Number(settings.taxes) || 0;
+  const total = subtotal - discount + taxAmount + deliveryCharge;
+  const safeTotal = Number(total) || 0;
+  const isLoggedIn = !!userId;
+
+  const handleSetAddress = () => navigation.navigate("Location");
+  const handleCouponApply = () => navigation.navigate("Coupons");
+
+  const renderCartItem = ({ item }) => (
+    <View style={styles.cartItem}>
+      <Image
+        source={{ uri: `${API.defaults.baseURL}${item.image_url}` }}
+        style={styles.cartImage}
+      />
+      <View style={styles.cartDetails}>
+        <Text style={styles.itemName}>{item.name}</Text>
+        <Text style={styles.price}>₹{item.price}</Text>
+        <View style={styles.quantityControls}>
+          <TouchableOpacity
+            onPress={() =>
+              dispatch({ type: "DECREMENT_QUANTITY", payload: item })
+            }
+          >
+            <Text style={styles.qtyBtn}>-</Text>
+          </TouchableOpacity>
+          <Text>{item.quantity}</Text>
+          <TouchableOpacity
+            onPress={() =>
+              dispatch({ type: "INCREMENT_QUANTITY", payload: item })
+            }
+          >
+            <Text style={styles.qtyBtn}>+</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      <View
+        style={[
+          styles.foodTypeDot,
+          {
+            backgroundColor: item.food_type === "VEG" ? "#2ecc71" : "#e74c3c",
+          },
+        ]}
+      />
+    </View>
+  );
+
+  return cartItems.length === 0 ? (
+    <View style={styles.emptyCartContainer}>
+      <Text style={styles.emptyText}>Your cart is empty</Text>
+      <TouchableOpacity
+        style={styles.exploreBtn}
+        onPress={() => navigation.navigate("Home")}
+      >
+        <Text style={styles.exploreBtnText}>Explore Items</Text>
+      </TouchableOpacity>
+    </View>
+  ) : (
+    <FlatList
+      data={cartItems}
+      keyExtractor={(item) => item.id.toString()}
+      renderItem={renderCartItem}
+      ListFooterComponent={
+        <>
+          {/* Explore More Items */}
+          <View>
+            <View style={styles.expsection}>
+              <Text style={styles.sectionTitle}>Explore More Items</Text>
+              <TouchableOpacity
+                style={styles.exploreitemBtn}
+                onPress={() => navigation.navigate("Home")}
+              >
+                <Text style={styles.exploreBtnText}>Explore</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+              {exploreItems.map((item) => (
+                <View key={item.id} style={styles.exploreCard}>
+                  <Image
+                    source={{ uri: `${API.defaults.baseURL}${item.image_url}` }}
+                    style={styles.exploreImage}
+                  />
+                  <Text>{item.name}</Text>
+                  <Text>₹{item.price}</Text>
+                  <TouchableOpacity
+                    onPress={() =>
+                      dispatch({ type: "ADD_TO_CART", payload: item })
+                    }
+                    style={styles.addBtn}
+                  >
+                    <Text style={{ color: "#fff" }}>Add</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </ScrollView>
+          </View>
+
+          {/* Address Section */}
+          <View style={styles.addressSection}>
+            {!isLoggedIn ? (
+              <TouchableOpacity onPress={() => navigation.navigate("Login")}>
+                <Text style={styles.addressBtn}>Login to set address</Text>
+              </TouchableOpacity>
+            ) : !selectedAddress ? (
+              <TouchableOpacity onPress={handleSetAddress}>
+                <Text style={styles.addressBtn}>Set Address</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.addressBox}>
+                <TouchableOpacity onPress={handleSetAddress}>
+                  <Text style={styles.addressTitle}>Delivery Address:</Text>
+                  <Text>
+                    {selectedAddress.house_block_no},{" "}
+                    {selectedAddress.area_road}
+                  </Text>
+                  <Text>
+                    {selectedAddress.city}, {selectedAddress.state} -{" "}
+                    {selectedAddress.pincode}
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+
+          {/* Coupon Section */}
+          <View style={styles.couponSection}>
+            {coupon ? (
+              <TouchableOpacity
+                style={styles.couponApplied}
+                onPress={() => {
+                  setCoupon(null);
+                  AsyncStorage.removeItem("selectedCoupon");
+                }}
+              >
+                <Text style={styles.couponText}>
+                  {coupon.code} -{" "}
+                  {coupon.discount_type === "flat"
+                    ? `Flat ₹${coupon.discount_value}`
+                    : `${coupon.discount_value}% off`}
+                </Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                onPress={handleCouponApply}
+                style={styles.couponBtn}
+              >
+                <Text style={styles.couponText}>Apply Coupon</Text>
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {/* Bill Details */}
+          <View style={styles.billSection}>
+            <Text style={styles.sectionTitle}>Bill Details</Text>
+            <Text>Subtotal: ₹{subtotal.toFixed(2)}</Text>
+            <Text>Coupon Discount: -₹{discount.toFixed(2)}</Text>
+            <Text>Delivery Charge: ₹{deliveryCharge.toFixed(2)}</Text>
+            <Text>Tax: ₹{taxAmount.toFixed(2)}</Text>
+            <Text style={styles.totalAmount}>
+              Total: ₹{safeTotal.toFixed(2)}
+            </Text>
+          </View>
+
+          {/* Pay Button */}
+          <View>
+            <TouchableOpacity
+              onPress={async () => {
+                if (!isLoggedIn) {
+                  navigation.navigate("Login");
+                } else if (!selectedAddress) {
+                  alert("Please select an address before proceeding.");
+                } else {
+                  try {
+                    const payload = {
+                      user_id: userId,
+                      items: cartItems.map((item) => ({
+                        item_code: item.item_code,
+                        quantity: item.quantity,
+                      })),
+                      subtotal,
+                      discount,
+                      delivery_charge: deliveryCharge,
+                      taxes: taxAmount,
+                      total: safeTotal,
+                      address: selectedAddress,
+                    };
+
+                    await API.post("/auth/order", payload);
+
+                    await AsyncStorage.removeItem("selectedCoupon");
+                    await AsyncStorage.removeItem("selectedAddress");
+
+                    dispatch({ type: "CLEAR_CART" });
+                    navigation.replace("Success");
+                  } catch (err) {
+                    console.error("Order placement failed", err);
+                    alert("Order failed. Please try again.");
+                  }
+                }
+              }}
+              style={styles.payButton}
+            >
+              <Text style={styles.payButtonText}>
+                {isLoggedIn ? "Pay" : "Login to Pay"}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </>
+      }
+    />
+  );
+};
+
+export default CartScreen; 
+const express = require("express");
+const router = express.Router();
+const { placeOrder  } = require("../../controller/user_Controller/users_orderController");
+
+router.post("/", placeOrder );
+
+module.exports = router;
+
+const db = require("../../config/db");
+
+const placeOrder = async (req, res) => {
+  const {
+    user_id,
+    items,
+    subtotal,
+    discount,
+    delivery_charge,
+    taxes,
+    total,
+    address,
+  } = req.body;
+
+  try {
+    const [existingAddressRows] = await db.query(
+      `SELECT id FROM addresses 
+       WHERE user_id = ? AND 
+             house_block_no = ? AND 
+             area_road = ? AND 
+             city = ? AND 
+             district = ? AND 
+             state = ? AND 
+             country = ? AND 
+             pincode = ?`,
+      [
+        user_id,
+        address.house_block_no,
+        address.area_road,
+        address.city,
+        address.district,
+        address.state,
+        address.country,
+        address.pincode,
+      ]
+    );
+
+    let address_id;
+
+    if (existingAddressRows.length > 0) {
+      address_id = existingAddressRows[0].id;
+    } else {
+      const [insertResult] = await db.query(
+        `INSERT INTO addresses 
+         (user_id, house_block_no, area_road, city, district, state, country, pincode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          user_id,
+          address.house_block_no,
+          address.area_road,
+          address.city,
+          address.district,
+          address.state,
+          address.country,
+          address.pincode,
+        ]
+      );
+      address_id = insertResult.insertId;
+    }
+
+    const [orderResult] = await db.query(
+      `INSERT INTO order_status 
+       (user_id, items, subtotal, discount, delivery_charge, taxes, total, address_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        user_id,
+        JSON.stringify(items),
+        subtotal,
+        discount,
+        delivery_charge,
+        taxes,
+        total,
+        address_id,
+      ]
+    );
+
+    res.status(201).json({
+      message: "Order placed successfully",
+      order_id: orderResult.insertId,
+    });
+  } catch (err) {
+    console.error("Error placing order:", err);
+    res.status(500).json({ error: "Internal server error" });
+  }
+};
+
+module.exports = { placeOrder };
+
+import React, { createContext, useContext, useReducer } from "react";
+
+const CartContext = createContext();
+
+const initialState = {
+  items: [], // { id, name, price, quantity, image_url, etc. }
+};
+
+const cartReducer = (state, action) => {
+  switch (action.type) {
+    case "ADD_TO_CART": {
+      const exists = state.items.find((i) => i.id === action.payload.id);
+      if (exists) {
+        return {
+          ...state,
+          items: state.items.map((item) =>
+            item.id === action.payload.id
+              ? { ...item, quantity: item.quantity + 1 }
+              : item
+          ),
+        };
+      }
+      return {
+        ...state,
+        items: [
+          ...state.items,
+          {
+            ...action.payload,
+            quantity: 1,
+            category_id: action.payload.category_id || null,
+            item_code: action.payload.item_code || "",
+          },
+        ],
+      };
+    }
+
+    case "INCREMENT_QUANTITY":
+      return {
+        ...state,
+        items: state.items.map((item) =>
+          item.id === action.payload.id
+            ? { ...item, quantity: item.quantity + 1 }
+            : item
+        ),
+      };
+
+    case "DECREMENT_QUANTITY":
+      return {
+        ...state,
+        items: state.items
+          .map((item) =>
+            item.id === action.payload.id
+              ? { ...item, quantity: item.quantity - 1 }
+              : item
+          )
+          .filter((item) => item.quantity > 0),
+      };
+
+    case "REMOVE_FROM_CART": {
+      return {
+        ...state,
+        items: state.items.filter((item) => item.id !== action.payload.id),
+      };
+    }
+
+    case "CLEAR_CART":
+      return initialState;
+
+    default:
+      return state;
+  }
+};
+
+export const CartProvider = ({ children }) => {
+  const [state, dispatch] = useReducer(cartReducer, initialState);
+  return (
+    <CartContext.Provider value={{ cart: state, dispatch }}>
+      {children}
+    </CartContext.Provider>
+  );
+};
+
+export const useCart = () => useContext(CartContext);
+
+import axios from "axios";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+
+export const BASE_URL = "http://192.168.29.74:5000";
+
+const API = axios.create({
+  baseURL: BASE_URL,
+});
+
+API.interceptors.request.use(async (config) => {
+  const token = await AsyncStorage.getItem("token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+export const fetchMe = () => API.get("/auth/me").then((res) => res.data);
+
+export const updateField = (field, value) =>
+  API.patch("/auth/update", { [field]: value }).then((res) => res.data);
+
+
+export const logoutUser = async () => {
+  await AsyncStorage.removeItem("token");
+  await AsyncStorage.removeItem("user");
+};
+
+export const getAllCoupons = () =>
+  API.get("/auth/coupons").then((res) => res.data);
+
+export default API;
+
+const mysql = require('mysql2');
+const dotenv = require('dotenv');
+dotenv.config();
+
+const pool = mysql.createPool({
+  host: process.env.DB_HOST,
+  user: process.env.DB_USER,
+  password: process.env.DB_PASSWORD,
+  database: process.env.DB_NAME,
+  waitForConnections: true,
+  connectionLimit: 10,
+  queueLimit: 0
+});
+
+module.exports = pool.promise();
+
+    use rr_food_corner;
+	CREATE TABLE users (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(255),
+		email VARCHAR(255) UNIQUE,
+		mobile VARCHAR(20) UNIQUE,
+		password_hash TEXT,
+		created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+		updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        role varchar(225),
+        blocked BOOLEAN DEFAULT FALSE
+		);
+		select * from users; 
+
+	CREATE TABLE addresses (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+	    user_id INT,
+	    house_block_no VARCHAR(255),
+	    area_road VARCHAR(255),
+	    city VARCHAR(100),
+	    district VARCHAR(100),
+	    state VARCHAR(100),
+	    country VARCHAR(100),
+	    pincode VARCHAR(20),
+	    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+	    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+		);
+		select * from addresses;
+
+	CREATE TABLE categories (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		name VARCHAR(100) UNIQUE NOT NULL,
+		catimage_url VARCHAR(225)
+		);
+		SELECT * from categories;	
+
+	CREATE TABLE food_items (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		item_code VARCHAR(20) UNIQUE NOT NULL,
+		name VARCHAR(100) NOT NULL,
+		category_id INT NOT NULL,
+		food_type VARCHAR(50),
+		combo_type VARCHAR(50),
+		price DECIMAL(10, 2),
+		subcontent VARCHAR(255),
+		image_url VARCHAR(255),
+		FOREIGN KEY (category_id) REFERENCES categories(id)
+		);
+		select * from food_items; 
+
+	CREATE TABLE order_status (
+		id INT AUTO_INCREMENT PRIMARY KEY,
+		user_id INT,
+		items JSON,
+		subtotal DECIMAL(10,2),
+		discount DECIMAL(10,2),
+		delivery_charge DECIMAL(10,2),
+		taxes DECIMAL(10,2),
+        total DECIMAL(10,2),
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        status VARCHAR(50) DEFAULT 'pending',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        address_id INT NULL
+		);
+		select * from order_status;
+		
+
+but it stores data 	id	user_id	items	subtotal	discount	delivery_charge	taxes	total	created_at	status	updated_at	address_id
+	1	6	[{"quantity": 1}]	250.00	0.00	20.00	20.00	290.00	2025-07-11 13:32:00	pending	2025-07-11 13:32:00	1
+	2	6	[{"quantity": 2}, {"quantity": 1}]	500.00	0.00	20.00	20.00	540.00	2025-07-11 13:35:43	pending	2025-07-11 13:35:43	1
+	3	6	[{"quantity": 1}]	250.00	0.00	20.00	20.00	290.00	2025-07-11 13:44:58	pending	2025-07-11 13:44:58	1
+	4	6	[{"quantity": 1}, {"quantity": 1}]	220.00	0.00	20.00	20.00	260.00	2025-07-11 14:24:08	pending	2025-07-11 14:24:08	1
+	5	6	[{"quantity": 1, "item_code": ""}]	350.00	20.00	20.00	20.00	370.00	2025-07-11 14:50:06	pending	2025-07-11 14:50:06	1
+	6	6	[{"quantity": 1, "item_code": ""}]	150.00	20.00	20.00	20.00	170.00	2025-07-11 14:57:16	pending	2025-07-11 14:57:16	1
+												 like this in order_status
+
+
+
