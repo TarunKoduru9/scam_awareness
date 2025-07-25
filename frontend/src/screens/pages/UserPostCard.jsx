@@ -17,7 +17,13 @@ import * as ImagePicker from "expo-image-picker";
 import EmojiPicker from "rn-emoji-keyboard";
 import * as FileSystem from "expo-file-system";
 import * as DocumentPicker from "expo-document-picker";
-import { getProfile, BASE_URL, postComplaint, updateComplaint } from "../../utils/api";
+import {
+  getProfile,
+  BASE_URL,
+  postComplaint,
+  updateComplaint,
+  repost,
+} from "../../utils/api";
 
 const UserPostCard = ({ navigation, route }) => {
   const [complaint, setComplaint] = useState("");
@@ -26,16 +32,18 @@ const UserPostCard = ({ navigation, route }) => {
   const [user, setUser] = useState(null);
 
   useEffect(() => {
-    const loadProfileAndPost = async () => {
+    const loadData = async () => {
       try {
         const userData = await getProfile();
         setUser(userData);
 
-        if (route.params?.post) {
-          const postToEdit = route.params.post;
-          setComplaint(postToEdit.text_content || "");
+        const postToUse = route.params?.post || route.params?.originalPost;
 
-          const preloadedFiles = postToEdit.files.map((file) => ({
+        if (postToUse) {
+          setComplaint(postToUse.text_content || postToUse.text || "");
+
+          const preloadedFiles = postToUse.attachments || postToUse.files || [];
+          const formattedFiles = preloadedFiles.map((file) => ({
             uri: `${BASE_URL}/${file.file_url.replace(/\\/g, "/")}`,
             name: file.file_url.split("/").pop(),
             type:
@@ -48,39 +56,48 @@ const UserPostCard = ({ navigation, route }) => {
                 : "application/octet-stream",
             isRemote: true,
           }));
-          setAttachments(preloadedFiles);
+
+          setAttachments(formattedFiles);
         }
       } catch (err) {
-        console.error("Failed to load profile or post", err);
+        console.error("Failed to load user or post", err);
       }
     };
 
-    loadProfileAndPost();
+    loadData();
   }, []);
 
-const handlePost = async () => {
-  if (!complaint.trim()) {
-    Alert.alert("Error", "Please enter a complaint");
-    return;
-  }
-
-  try {
-    if (route.params?.post) {
-      await updateComplaint(route.params.post.id, complaint, attachments);
-      Alert.alert("Updated", "Complaint updated successfully");
-    } else {
-      await postComplaint(complaint, attachments);
-      Alert.alert("Success", "Complaint posted successfully");
+  const handlePost = async () => {
+    if (!complaint.trim()) {
+      Alert.alert("Error", "Please enter a complaint");
+      return;
     }
 
-    setComplaint("");
-    setAttachments([]);
-    navigation.goBack();
-  } catch (err) {
-    Alert.alert("Error", err.message || "Something went wrong");
-  }
-};
+    const isEdit = route.params?.post && !route.params?.isRepost;
+    const isRepost = route.params?.isRepost;
 
+    try {
+      if (isEdit) {
+        await updateComplaint(route.params.post.id, complaint, attachments);
+        Alert.alert("Updated", "Complaint updated successfully");
+      } else {
+        await postComplaint(complaint, attachments);
+
+        if (isRepost && route.params?.post?.id) {
+          await repost(route.params.post.id);
+        }
+
+        Alert.alert("Success", isRepost ? "Repost done" : "Complaint posted");
+      }
+
+      setComplaint("");
+      setAttachments([]);
+      navigation.goBack();
+    } catch (err) {
+      console.error("Post failed", err);
+      Alert.alert("Error", err.message || "Something went wrong");
+    }
+  };
 
   const pickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -128,12 +145,9 @@ const handlePost = async () => {
         const fileName = asset.name || `document-${Date.now()}.pdf`;
         const newPath = FileSystem.documentDirectory + fileName;
 
-        await FileSystem.copyAsync({
-          from: fileUri,
-          to: newPath,
-        });
-
+        await FileSystem.copyAsync({ from: fileUri, to: newPath });
         const fileInfo = await FileSystem.getInfoAsync(newPath);
+
         if (fileInfo.exists) {
           setAttachments((prev) => [
             ...prev,
@@ -144,7 +158,6 @@ const handlePost = async () => {
             },
           ]);
         } else {
-          console.warn("File copy failed:", newPath);
           Alert.alert("Error", "Could not attach file.");
         }
       }
@@ -169,9 +182,9 @@ const handlePost = async () => {
             style={styles.avatar}
           />
           <View style={styles.userInfo}>
-            <Text style={styles.name}>{`${user?.first_name ?? ""} ${
-              user?.last_name ?? ""
-            }`}</Text>
+            <Text style={styles.name}>
+              {`${user?.first_name ?? ""} ${user?.last_name ?? ""}`}
+            </Text>
             <Text style={styles.username}>@{user?.username ?? ""}</Text>
           </View>
         </View>
@@ -212,7 +225,6 @@ const handlePost = async () => {
           </TouchableOpacity>
         </View>
 
-        {/* Preview attachments */}
         {attachments.map((file, index) => (
           <Text
             key={index}
@@ -230,7 +242,6 @@ const handlePost = async () => {
     </ScrollView>
   );
 };
-
 export default UserPostCard;
 
 const styles = StyleSheet.create({

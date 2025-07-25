@@ -15,22 +15,6 @@ exports.likePost = async (req, res) => {
     console.error("Like Error:", err);
     res.status(500).json({ message: err.message });
   }
-
-  const [[owner]] = await db.query(
-    "SELECT u.expo_push_token FROM users u JOIN complaints c ON u.id = c.user_id WHERE c.id = ? AND u.id != ?",
-    [complaint_id, user_id]
-  );
-
-  if (owner?.expo_push_token) {
-    await expo.sendPushNotificationsAsync([
-      {
-        to: owner.expo_push_token,
-        sound: "default",
-        title: "New Like",
-        body: "Someone liked your complaint!",
-      },
-    ]);
-  }
 };
 
 exports.unlikePost = async (req, res) => {
@@ -60,22 +44,6 @@ exports.addComment = async (req, res) => {
   } catch (err) {
     console.error("Comment add Error:", err);
     res.status(500).json({ message: err.message });
-  }
-
-  const [[owner]] = await db.query(
-    "SELECT u.expo_push_token FROM users u JOIN complaints c ON u.id = c.user_id WHERE c.id = ? AND u.id != ?",
-    [complaint_id, user_id]
-  );
-
-  if (owner?.expo_push_token) {
-    await expo.sendPushNotificationsAsync([
-      {
-        to: owner.expo_push_token,
-        sound: "default",
-        title: "New Comment",
-        body: "Someone commented on your post!",
-      },
-    ]);
   }
 };
 
@@ -143,22 +111,6 @@ exports.followUser = async (req, res) => {
   } catch (err) {
     res.status(500).json({ message: "Already following or error occurred." });
   }
-
-  const [[followed]] = await db.query(
-    "SELECT expo_push_token FROM users WHERE id = ? AND id != ?",
-    [following_id, follower_id]
-  );
-
-  if (followed?.expo_push_token) {
-    await expo.sendPushNotificationsAsync([
-      {
-        to: followed.expo_push_token,
-        sound: "default",
-        title: "New Follower",
-        body: "Someone just followed you!",
-      },
-    ]);
-  }
 };
 
 exports.unfollowUser = async (req, res) => {
@@ -211,13 +163,26 @@ exports.getFollowing = async (req, res) => {
 exports.repost = async (req, res) => {
   const user_id = req.user.id;
   const { complaint_id } = req.body;
+
   try {
-    await db.query(
-      `INSERT IGNORE INTO reposts (user_id, complaint_id) VALUES (?, ?)`,
+    const [existing] = await db.query(
+      "SELECT 1 FROM reposts WHERE user_id = ? AND complaint_id = ?",
       [user_id, complaint_id]
     );
+
+    if (existing.length > 0) {
+      return res.status(409).json({ message: "You already reposted this post." });
+    }
+
+    await db.query(
+      `INSERT INTO reposts (user_id, complaint_id) VALUES (?, ?)`,
+      [user_id, complaint_id]
+    );
+
     res.json({ message: "Reposted successfully." });
   } catch (err) {
-    res.status(500).json({ message: "Already reposted or error occurred." });
+    console.error("Repost error:", err);
+    res.status(500).json({ message: "Something went wrong." });
   }
 };
+

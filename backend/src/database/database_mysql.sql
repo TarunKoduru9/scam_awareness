@@ -20,7 +20,6 @@ CREATE TABLE users (
 );
 select * from users;
 
-
 CREATE TABLE otp_verifications (
 id INT AUTO_INCREMENT PRIMARY KEY,
 		user_id INT,
@@ -29,6 +28,7 @@ id INT AUTO_INCREMENT PRIMARY KEY,
 		verified BOOLEAN DEFAULT FALSE,
 		FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 		);
+        select * from otp_verifications;
         
 CREATE TABLE complaints (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -48,6 +48,24 @@ CREATE TABLE complaint_files (
   FOREIGN KEY (complaint_id) REFERENCES complaints(id) ON DELETE CASCADE
 );
 select * from complaint_files;
+
+CREATE TABLE emergency (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  user_id INT NOT NULL,
+  text TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+select * from emergency;
+
+CREATE TABLE emergency_files (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  emergency_id INT NOT NULL,
+  file_url TEXT NOT NULL,
+  file_type ENUM('image', 'document', 'audio', 'video') NOT NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (emergency_id) REFERENCES emergency(id) ON DELETE CASCADE
+);
 
 CREATE TABLE followers (
   id INT AUTO_INCREMENT PRIMARY KEY,

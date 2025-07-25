@@ -10,7 +10,7 @@ import {
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { useNavigation } from "@react-navigation/native";
-import { fetchNotifications } from "../../utils/api"; // <--- your API function
+import { fetchNotifications } from "../../utils/api";
 import Navbar from "./Navbar";
 import Downarrow from "../../../assets/downarrow.svg";
 import { BASE_URL } from "../../utils/api";

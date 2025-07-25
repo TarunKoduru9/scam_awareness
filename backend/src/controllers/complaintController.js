@@ -30,20 +30,6 @@ exports.createComplaintController = async (req, res) => {
 
     await Promise.all(fileInserts);
 
-    const [followers] = await db.query(
-      "SELECT u.expo_push_token FROM followers f JOIN users u ON f.follower_id = u.id WHERE f.following_id = ? AND u.expo_push_token IS NOT NULL",
-      [userId]
-    );
-
-    const messages = followers.map((f) => ({
-      to: f.expo_push_token,
-      sound: "default",
-      title: "New Post",
-      body: "Someone you follow just posted a complaint!",
-    }));
-
-    await expo.sendPushNotificationsAsync(messages);
-
     res.status(201).json({
       success: true,
       message: "Complaint posted successfully",

@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useContext } from "react";
 import {
   View,
   Text,
@@ -14,12 +14,11 @@ import { Ionicons } from "@expo/vector-icons";
 import { verifyOtp, resendOtp } from "../../utils/api";
 import { AuthContext } from "../../utils/AuthContext";
 
-
 export default function OtpLoginScreen({ navigation, route }) {
   const { email } = route.params;
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [loading, setLoading] = useState(false);
-  const { setLoggedIn } = useAuth();
+  const { setLoggedIn } = useContext(AuthContext);
   const inputs = useRef([]);
 
   const handleChange = (text, index) => {

@@ -1,23 +1,4 @@
 const db = require("../config/db");
-const { Expo } = require("expo-server-sdk");
-const expo = new Expo();
-
-// POST /users/push-token
-exports.savePushToken = async (req, res) => {
-  const userId = req.user.id;
-  const { token } = req.body;
-
-  try {
-    await db.query("UPDATE users SET expo_push_token = ? WHERE id = ?", [
-      token,
-      userId,
-    ]);
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Error saving push token:", err);
-    res.status(500).json({ error: "Internal server error" });
-  }
-};
 
 exports.getNotifications = async (req, res) => {
   const userId = req.user.id;
@@ -84,38 +65,5 @@ exports.getNotifications = async (req, res) => {
   } catch (e) {
     console.error(e);
     res.status(500).json({ error: "Could not fetch notifications" });
-  }
-};
-
-exports.sendTestNotification = async (req, res) => {
-  const userId = req.user.id;
-
-  try {
-    const [user] = await db.query(
-      "SELECT expo_push_token FROM users WHERE id = ?",
-      [userId]
-    );
-
-    const pushToken = user[0]?.expo_push_token;
-
-    if (!Expo.isExpoPushToken(pushToken)) {
-      return res.status(400).json({ error: "Invalid Expo push token" });
-    }
-
-    const messages = [
-      {
-        to: pushToken,
-        sound: "default",
-        body: "🔔 New update for you!",
-        data: { someData: "any data you want" },
-      },
-    ];
-
-    await expo.sendPushNotificationsAsync(messages);
-
-    res.json({ success: true });
-  } catch (err) {
-    console.error("Notification error:", err);
-    res.status(500).json({ error: "Failed to send notification" });
   }
 };

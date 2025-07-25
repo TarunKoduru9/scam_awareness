@@ -81,6 +81,7 @@ export const resendOtp = async (email) => {
 };
 
 // Protected APIs
+//Profile
 export const getProfile = async () => {
   const res = await protectedApi.get("/profile");
   return res.data.user;
@@ -90,7 +91,6 @@ export const getUserProfileById = async (userId) => {
   const res = await protectedApi.get(`/profile/${userId}`);
   return res.data.user;
 };
-
 
 export const updateUserProfile = async (data) => {
   const res = await protectedApi.put("/update-profile", data);
@@ -111,6 +111,7 @@ export const uploadCoverImage = async (formData) => {
   return res.data;
 };
 
+// Complaints
 export const postComplaint = async (text, files) => {
   const formData = new FormData();
   formData.append("text", text);
@@ -180,7 +181,8 @@ export const fetchLikedComplaint = async () => {
   const res = await protectedApi.get("/liked-posts");
   return res.data;
 };
-
+ 
+// Search
 export const searchUsersByName = async (query) => {
   const res = await protectedApi.get(`/search-users?query=${query}`);
   return res.data;

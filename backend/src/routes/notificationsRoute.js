@@ -8,13 +8,6 @@ router.get(
   authorize("user"),
   notificationsCtrl.getNotifications
 );
-router.post(
-  "/notifications-test",
-  authorize("user"),
-  notificationsCtrl.sendTestNotification
-);
-
-router.post("/save-push-token", authorize("user"), notificationsCtrl.savePushToken);
 
 
 module.exports = router;

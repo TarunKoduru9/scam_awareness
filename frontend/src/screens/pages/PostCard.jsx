@@ -43,7 +43,7 @@ const PostCard = ({
   isMenuOpen,
   onToggleMenu,
   insideProfile = false,
-  onDelete 
+  onDelete,
 }) => {
   const navigation = useNavigation();
 
@@ -176,12 +176,10 @@ const PostCard = ({
   };
 
   const handleRepost = async () => {
-    try {
-      await repost(post.id);
-      setRepostCount((prev) => prev + 1);
-    } catch (err) {
-      console.error("Repost error:", err);
-    }
+    navigation.navigate("post", {
+      post,
+      isRepost: true,
+    });
   };
 
   const handleDelete = () => {
@@ -197,7 +195,7 @@ const PostCard = ({
 
             if (typeof onToggleMenu === "function") {
               onToggleMenu();
-               onDelete?.();
+              onDelete?.();
             }
           } catch (err) {
             console.error("Delete error:", err);
